@@ -9,23 +9,23 @@ I needed to automate my WeMo with a custom complex recipe, and IFTTT was not cut
 
 The API supports the following methods:
 
-GetState
+GetState()
 
-On 
+On()
 
-Off
+Off()
 
-GetSignalStrength
+GetSignalStrength()
 
-GetLogFileURL
+GetLogFileURL()
 
-GetIconURL
+GetIconURL()
 
-GetHomeId
+GetHomeId()
 
-GetFriendlyName
+GetFriendlyName()
 
-ChangeFriendlyName
+ChangeFriendlyName()
 
 ## Example usage
 
