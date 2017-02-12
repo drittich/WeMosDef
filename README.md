@@ -1,5 +1,5 @@
 # WeMosDef
-A WSDL-based C# API for WeMo devices.
+A WSDL-based C# API for Belkin WeMo devices.
 
 Based on the WSDL definition from https://github.com/sklose/WeMoWsdl
 
