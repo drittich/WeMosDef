@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web;
@@ -6,16 +7,23 @@ using System.Web.UI;
 using System.Web.UI.WebControls;
 
 using WeMosDef;
+using FindingWemoNS;
 
 public partial class WeMosDefGUI : System.Web.UI.Page
 {
-	public string ip = "192.168.15.71";
-	public int port = 49153;
+	public static string ip = "192.168.15.22"; 
+	public int port;
 	public string PowerState = null;
 
 	protected void Page_Load(object sender, EventArgs e)
 	{
-		PowerState = GetPowerState(ip, port);
+		var wemo = FindingWemo.Search(System.Net.IPAddress.Parse(ip), System.Net.IPAddress.Parse(ip), "Silvia").SingleOrDefault();
+
+		if (wemo == null)
+			throw new Exception("Wemo not found");
+
+		port = wemo.Port;
+		PowerState = GetPowerState(wemo.IPAddress.ToString(), port);
 		if (Request.ServerVariables["REQUEST_METHOD"] == "POST")
 			HandleAction(Request.Form["action"]);
 	}
@@ -74,7 +82,4 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 		else
 			throw new Exception("Timed out getting Wemo status. Is WiFi connected?");
 	}
-
 }
-
-
