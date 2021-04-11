@@ -17,7 +17,7 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 
 	protected void Page_Load(object sender, EventArgs e)
 	{
-		var wemo = FindingWemo.Search(System.Net.IPAddress.Parse(ip), System.Net.IPAddress.Parse(ip), "Silvia").SingleOrDefault();
+		var wemo = FindingWemo.Search(System.Net.IPAddress.Parse(ip), System.Net.IPAddress.Parse(ip), "Rocket").SingleOrDefault();
 
 		if (wemo == null)
 			throw new Exception("Wemo not found");
@@ -56,8 +56,8 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 	void DoClean(string ip, int port)
 	{
 		TimeSpan onInterval = TimeSpan.FromSeconds(10);
-		TimeSpan offInterval = TimeSpan.FromSeconds(15);
-		int repetitions = 5;
+		TimeSpan offInterval = TimeSpan.FromSeconds(10);
+		int repetitions = 6;
 
 		var client = new WeMosDef.Client(ip, port);
 		for (int i = 0; i < repetitions; i++)

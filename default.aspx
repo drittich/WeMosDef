@@ -7,6 +7,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 	<title>WeMosDef</title>
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+	
 	<link href="dashboard.css" rel="stylesheet">
 	<link href="main.css" rel="stylesheet">
 </head>
@@ -40,7 +41,7 @@
 	</nav>
 
 	<div class="container" style="margin: 34px 12px 12px 12px;">
-		<div class="form-group" style="width: 180px; text-align: center">
+		<div class="form-group" style="xwidth: 180px; text-align: center">
 			<div class="alert alert-<%= (this.PowerState == "0" ? "danger" : "success") %>" role="alert">
 				Power: <%= (this.PowerState == "0" ? "Off" : "On") %>
 			</div>
@@ -58,6 +59,9 @@
 			</div>
 			<div class="form-group">
 				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('powerstate')">Power State</button>
+			</div>
+			<div class="form-group">
+				<button type="button" class="btn btn-outline-primary wemo-button" onclick="location.reload()">Reload</button>
 			</div>
 		</form>
 	</div>
