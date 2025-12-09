@@ -1,18 +1,15 @@
 using System;
+using System.Configuration;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
-using System.Web.UI;
-using System.Web.UI.WebControls;
 
-using WeMosDef;
 using FindingWemoNS;
 
 public partial class WeMosDefGUI : System.Web.UI.Page
 {
-	public static string ip = "192.168.15.22"; 
+	public static string ip = "192.168.15.22";
 	public int port;
 	public string PowerState = null;
 
@@ -23,7 +20,7 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 		var rawPath = (Request.QueryString["__path"] ?? Request.Path ?? string.Empty).ToLowerInvariant();
 		// Normalize: ensure leading slash for consistent matching
 		var originalPath = rawPath.StartsWith("/") ? rawPath : "/" + rawPath;
-		
+
 		if (originalPath.Contains("/api/"))
 		{
 			HandleApiRequest(originalPath);
@@ -64,10 +61,20 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 	{
 		// For API endpoints that need device info, discover first
 		bool needsDevice = originalPath.Contains("/api/state") ||
-		                   originalPath.Contains("/api/toggle") ||
-		                   originalPath.Contains("/api/events") ||
-		                   originalPath.Contains("/api/info");
-		
+						   originalPath.Contains("/api/toggle") ||
+						   originalPath.Contains("/api/events") ||
+						   originalPath.Contains("/api/info");
+
+		// Validate WCF endpoint configuration early for API calls
+		var endpoint = ConfigurationManager.AppSettings["BasicServiceEndpoint"];
+		if (string.IsNullOrWhiteSpace(endpoint))
+		{
+			Response.ContentType = "application/json";
+			Response.StatusCode = 500;
+			WriteJson("{\"error\":\"endpoint_not_configured\"}");
+			return;
+		}
+
 		if (needsDevice)
 		{
 			DiscoverDevice();
@@ -224,10 +231,31 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 		}
 		// End of stream
 	}
-	
+
+	// Centralized WCF client construction from appSettings
+	WeMosDef.ServiceReference1.BasicServicePortTypeClient GetClient()
+	{
+		var endpoint = ConfigurationManager.AppSettings["BasicServiceEndpoint"];
+		if (string.IsNullOrWhiteSpace(endpoint))
+		{
+			return null;
+		}
+		var binding = new System.ServiceModel.BasicHttpBinding();
+		var address = new System.ServiceModel.EndpointAddress(endpoint);
+		return new WeMosDef.ServiceReference1.BasicServicePortTypeClient(binding, address);
+	}
+
 	// Safe wrapper: returns "0"/"1" or throws friendly error
 	string SafeGetPowerState(string ipAddr, int p)
 	{
+		// If endpoint missing, fail fast with friendly message for API paths
+		var svcClient = GetClient();
+		if (svcClient == null && (Request.Path?.IndexOf("/api/", StringComparison.OrdinalIgnoreCase) ?? -1) >= 0)
+		{
+			throw new Exception("Endpoint not configured");
+		}
+
+		// Existing local device logic retained
 		var client = new WeMosDef.Client(ipAddr, p);
 		var task = Task.Run(() => client.GetState());
 		if (task.Wait(TimeSpan.FromSeconds(15)))

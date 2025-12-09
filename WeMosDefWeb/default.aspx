@@ -1,4 +1,4 @@
-<%@ Page Language="C#" CodeFile="WeMosDefGUI.aspx.cs" Inherits="WeMosDefGUI" AutoEventWireup="true" %>
+<%@ Page Language="C#" CodeBehind="WeMosDefGUI.aspx.cs" Inherits="WeMosDefGUI" AutoEventWireup="true" %>
 
 <!DOCTYPE html>
 <html lang="en">
