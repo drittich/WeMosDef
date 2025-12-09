@@ -17,45 +17,182 @@
 	</nav>
 
 	<div class="container" style="margin: 34px 12px 12px 12px;">
-		<div class="form-group" style="xwidth: 180px; text-align: center">
-			<div class="alert alert-<%= (this.PowerState == "0" ? "danger" : "success") %>" role="alert">
-				Power: <%= (this.PowerState == "0" ? "Off" : "On") %>
+		<div class="form-group" style="text-align:center">
+			<div id="stateBadge" class="alert alert-secondary" role="alert">
+				Power: <span id="stateText">Unknown</span>
 			</div>
 		</div>
-		<form action="" method="post" id="f1" name="f1">
-			<input type="hidden" id="action" name="action" value="" />
-			<div class="form-group">
-				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('on')">On</button>
+		<div class="form-group" style="text-align:center">
+			<button id="toggleBtn" type="button" class="btn btn-primary wemo-button">Toggle Power</button>
+		</div>
+
+		<hr/>
+		<div class="row">
+			<div class="col-sm-6">
+				<h6>Device Info</h6>
+				<pre id="deviceInfo" class="small">Loading...</pre>
 			</div>
-			<div class="form-group">
-				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('off')">Off</button>
+			<div class="col-sm-6">
+				<h6>Schedule</h6>
+				<div class="form-inline mb-2">
+					<label class="mr-2">Enabled</label>
+					<input type="checkbox" id="scheduleEnabled"/>
+					<button id="saveScheduleEnabled" class="btn btn-sm btn-outline-secondary ml-2">Save</button>
+				</div>
+				<pre id="scheduleData" class="small">Loading...</pre>
 			</div>
-			<div class="form-group">
-				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('powerstate')">Power State</button>
-			</div>
-			<div class="form-group">
-				<button type="button" class="btn btn-outline-primary wemo-button" onclick="location.reload()">Reload</button>
-			</div>
-		</form>
+		</div>
 	</div>
 
 	<script src="https://code.jquery.com/jquery-3.1.1.slim.min.js" integrity="sha384-A7FZj7v+d/sdmMqp/nOQwliLvUsJfDHW+k9Omg/a/EheAdgtzNs3hpfag6Ed950n" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.0/js/tether.min.js" integrity="sha384-DztdAPBWPRXSA/3eYEEUWrWCy7G5KFbe8fFjk5JAIxUYHKkDx6Qin1DkWx51bBrb" crossorigin="anonymous"></script>
 	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js" integrity="sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn" crossorigin="anonymous"></script>
 	<script>
-		function handleButton(action) {
-			switch (action) {
-				case 'on':
-					break;
-				case 'off':
-					break;
-				default:
-					break;
+		(function () {
+			var pollingIntervalMs = 3000;
+			var backoffMs = pollingIntervalMs;
+			var maxBackoffMs = 30000;
+			var pollTimer = null;
 
+			function setBadge(state) {
+				var badge = document.getElementById('stateBadge');
+				var text = document.getElementById('stateText');
+				if (!badge || !text) return;
+				if (state === 'on') {
+					badge.className = 'alert alert-success';
+					text.textContent = 'On';
+				} else if (state === 'off') {
+					badge.className = 'alert alert-danger';
+					text.textContent = 'Off';
+				} else {
+					badge.className = 'alert alert-secondary';
+					text.textContent = 'Unknown';
+				}
 			}
-			$('#action').val(action);
-			$('#f1').submit();
-		}
+
+			function pollState() {
+				fetch('/api/state', { cache: 'no-store' })
+					.then(function (r) { return r.json(); })
+					.then(function (j) {
+						setBadge(j.state);
+						// reset backoff on success
+						backoffMs = pollingIntervalMs;
+						scheduleNextPoll(backoffMs);
+					})
+					.catch(function () {
+						// exponential backoff on error
+						backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
+						scheduleNextPoll(backoffMs);
+					});
+			}
+
+			function scheduleNextPoll(ms) {
+				if (pollTimer) window.clearTimeout(pollTimer);
+				pollTimer = window.setTimeout(pollState, ms);
+			}
+
+			function togglePower() {
+				// optimistic UI: flip immediately, then confirm via poll
+				var currentText = document.getElementById('stateText').textContent.toLowerCase();
+				var optimistic = currentText === 'on' ? 'off' : 'on';
+				setBadge(optimistic);
+
+				fetch('/api/toggle', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: '{}',
+					cache: 'no-store'
+				})
+					.then(function (r) { return r.json(); })
+					.then(function (j) {
+						setBadge(j.state);
+						// immediate poll to sync
+						backoffMs = pollingIntervalMs;
+						scheduleNextPoll(500);
+					})
+					.catch(function () {
+						// revert to unknown on failure, increase backoff
+						setBadge('unknown');
+						backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
+						scheduleNextPoll(backoffMs);
+					});
+			}
+
+			function loadInfo() {
+				fetch('/api/info', { cache: 'no-store' })
+					.then(function (r) { return r.json(); })
+					.then(function (j) {
+						document.getElementById('deviceInfo').textContent = JSON.stringify(j, null, 2);
+					})
+					.catch(function () {
+						document.getElementById('deviceInfo').textContent = 'Failed to load device info';
+					});
+			}
+
+			function loadSchedule() {
+				fetch('/api/schedule', { cache: 'no-store' })
+					.then(function (r) { return r.json(); })
+					.then(function (j) {
+						document.getElementById('scheduleData').textContent = JSON.stringify(j, null, 2);
+						if (typeof j.enabled === 'boolean') {
+							document.getElementById('scheduleEnabled').checked = j.enabled;
+						}
+					})
+					.catch(function () {
+						document.getElementById('scheduleData').textContent = 'Failed to load schedule';
+					});
+			}
+
+			function saveScheduleEnabled() {
+				var enabled = document.getElementById('scheduleEnabled').checked;
+				fetch('/api/schedule/enable', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ enabled: enabled }),
+					cache: 'no-store'
+				})
+					.then(function (r) { return r.json(); })
+					.then(function () {
+						loadSchedule();
+					})
+					.catch(function () { /* ignore */ });
+			}
+
+			// Optional Server-Sent Events hookup for near real-time updates
+			var evtSrc = null;
+			function startSSE() {
+				try {
+					evtSrc = new EventSource('/api/events');
+					evtSrc.onmessage = function (ev) {
+						try {
+							var data = JSON.parse(ev.data);
+							if (data.type === 'state' && data.state) {
+								setBadge(data.state);
+							}
+						} catch (_) { /* ignore parse errors */ }
+					};
+					evtSrc.onerror = function () {
+						// If SSE fails, close and rely on polling
+						if (evtSrc) { evtSrc.close(); evtSrc = null; }
+					};
+				} catch (_) {
+					// Browser may not support EventSource; continue with polling
+				}
+			}
+
+			document.addEventListener('DOMContentLoaded', function () {
+				var btn = document.getElementById('toggleBtn');
+				if (btn) btn.addEventListener('click', togglePower);
+				var saveBtn = document.getElementById('saveScheduleEnabled');
+				if (saveBtn) saveBtn.addEventListener('click', saveScheduleEnabled);
+
+				// initial loads
+				pollState();
+				startSSE();
+				loadInfo();
+				loadSchedule();
+			});
+		})();
 	</script>
 
 </body>
