@@ -122,24 +122,110 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 				WriteJson(string.Format("{{\"make\":\"{0}\",\"model\":\"{1}\",\"firmware\":\"{2}\",\"friendlyName\":\"{3}\",\"ip\":\"{4}\",\"port\":{5}}}", make, model, firmware, name, ip, port));
 				return;
 			}
-			// Schedule endpoints (stubs to be implemented)
+			// Schedule endpoints: persisted locally via WeMosDef.ScheduleStore and WeMosDef.Client
 			if (originalPath.Contains("/api/schedule") && Request.HttpMethod == "GET")
 			{
-				// TODO: read rules from device when supported by WeMosDef/FindingWemo
-				WriteJson("{\"rules\":[],\"enabled\":false}");
+				var client = new WeMosDef.Client(ip, port);
+				var s = client.ReadSchedule();
+				var rulesJson = string.Join(",", s.Rules.Select(r =>
+					string.Format("{{\"id\":\"{0}\",\"action\":\"{1}\",\"time\":{{\"hour\":{2},\"minute\":{3}}},\"weekdays\":[{4}]}}",
+						HttpUtility.JavaScriptStringEncode(r.Id),
+						HttpUtility.JavaScriptStringEncode(r.Action),
+						r.Time.Hour,
+						r.Time.Minute,
+						string.Join(",", r.Weekdays.Select(d => "\"" + HttpUtility.JavaScriptStringEncode(d) + "\""))
+					)
+				));
+				WriteJson(string.Format("{{\"enabled\":{0},\"rules\":[{1}]}}", s.Enabled ? "true" : "false", rulesJson));
 				return;
 			}
 			if (originalPath.Contains("/api/schedule") && Request.HttpMethod == "POST")
 			{
-				// TODO: validate payload and write rules to device
-				WriteJson("{\"ok\":true}");
-				return;
+				try
+				{
+					// Read JSON body
+					string body;
+					using (var reader = new System.IO.StreamReader(Request.InputStream))
+					{
+						body = reader.ReadToEnd();
+					}
+					// Very small JSON parsing without extra deps
+					bool enabled = ExtractBool(body, "enabled", defaultValue: true);
+					string startHHMM = ExtractString(body, "startHHMM");
+					string stopHHMM = ExtractString(body, "stopHHMM");
+
+					if (string.IsNullOrWhiteSpace(startHHMM))
+					{
+						Response.StatusCode = 400;
+						WriteJson("{\"ok\":false,\"error\":\"startHHMM required (EST)\"}");
+						return;
+					}
+
+					(int sh, int sm) = ParseHHMM(startHHMM);
+					int? stopH = null, stopM = null;
+					if (!string.IsNullOrWhiteSpace(stopHHMM))
+					{
+						(int eh, int em) = ParseHHMM(stopHHMM);
+						stopH = eh; stopM = em;
+					}
+
+					var allDays = new System.Collections.Generic.List<string> { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+					var schedule = new WeMosDef.Schedule
+					{
+						DeviceIp = ip,
+						Enabled = enabled,
+						Rules = new System.Collections.Generic.List<WeMosDef.Rule>()
+					};
+					schedule.Rules.Add(new WeMosDef.Rule
+					{
+						Action = "on",
+						Time = new WeMosDef.TimeEvent { Hour = sh, Minute = sm },
+						Weekdays = allDays
+					});
+					if (stopH.HasValue && stopM.HasValue)
+					{
+						schedule.Rules.Add(new WeMosDef.Rule
+						{
+							Action = "off",
+							Time = new WeMosDef.TimeEvent { Hour = stopH.Value, Minute = stopM.Value },
+							Weekdays = allDays
+						});
+					}
+
+					var client = new WeMosDef.Client(ip, port);
+					client.UpdateSchedule(schedule);
+
+					WriteJson("{\"ok\":true}");
+					return;
+				}
+				catch (Exception ex)
+				{
+					Response.StatusCode = 400;
+					WriteJson(string.Format("{{\"ok\":false,\"error\":\"{0}\"}}", HttpUtility.JavaScriptStringEncode(ex.Message)));
+					return;
+				}
 			}
 			if (originalPath.Contains("/api/schedule/enable") && Request.HttpMethod == "POST")
 			{
-				// TODO: enable/disable schedule on device
-				WriteJson("{\"ok\":true}");
-				return;
+				try
+				{
+					string body;
+					using (var reader = new System.IO.StreamReader(Request.InputStream))
+					{
+						body = reader.ReadToEnd();
+					}
+					bool enabled = ExtractBool(body, "enabled", defaultValue: true);
+					var client = new WeMosDef.Client(ip, port);
+					var s = enabled ? client.EnableSchedule() : client.DisableSchedule();
+					WriteJson(string.Format("{{\"ok\":true,\"enabled\":{0}}}", s.Enabled ? "true" : "false"));
+					return;
+				}
+				catch (Exception ex)
+				{
+					Response.StatusCode = 400;
+					WriteJson(string.Format("{{\"ok\":false,\"error\":\"{0}\"}}", HttpUtility.JavaScriptStringEncode(ex.Message)));
+					return;
+				}
 			}
 
 			Response.StatusCode = 404;
@@ -263,5 +349,55 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 			return task.Result;
 		}
 		throw new Exception("Timed out getting Wemo status. Is WiFi connected?");
+	}
+
+	// Helpers for light-weight JSON extraction and time parsing (HH:MM)
+	static string ExtractString(string json, string key)
+	{
+		if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key)) return string.Empty;
+		// naive search: "key":"value"
+		var pattern = "\"" + key + "\"";
+		var i = json.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+		if (i < 0) return string.Empty;
+		i = json.IndexOf(':', i);
+		if (i < 0) return string.Empty;
+		// skip whitespace
+		while (i + 1 < json.Length && char.IsWhiteSpace(json[i + 1])) i++;
+		if (i + 1 >= json.Length) return string.Empty;
+		if (json[i + 1] == '\"')
+		{
+			var start = i + 2;
+			var end = json.IndexOf('\"', start);
+			if (end < 0) return string.Empty;
+			return json.Substring(start, end - start);
+		}
+		return string.Empty;
+	}
+
+	static bool ExtractBool(string json, string key, bool defaultValue)
+	{
+		if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key)) return defaultValue;
+		var pattern = "\"" + key + "\"";
+		var i = json.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+		if (i < 0) return defaultValue;
+		i = json.IndexOf(':', i);
+		if (i < 0) return defaultValue;
+		while (i + 1 < json.Length && char.IsWhiteSpace(json[i + 1])) i++;
+		var start = i + 1;
+		if (start >= json.Length) return defaultValue;
+		if (json.IndexOf("true", start, StringComparison.OrdinalIgnoreCase) == start) return true;
+		if (json.IndexOf("false", start, StringComparison.OrdinalIgnoreCase) == start) return false;
+		return defaultValue;
+	}
+
+	static (int h, int m) ParseHHMM(string s)
+	{
+		var parts = (s ?? "").Split(':');
+		if (parts.Length != 2) throw new Exception("Time must be HH:MM");
+		int h, m;
+		if (!int.TryParse(parts[0], out h) || !int.TryParse(parts[1], out m)) throw new Exception("Time must be HH:MM");
+		if (h < 0 || h > 23) throw new Exception("Hour must be 0-23");
+		if (m < 0 || m > 59) throw new Exception("Minute must be 0-59");
+		return (h, m);
 	}
 }

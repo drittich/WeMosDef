@@ -37,7 +37,18 @@
 				<div class="form-inline mb-2">
 					<label class="mr-2">Enabled</label>
 					<input type="checkbox" id="scheduleEnabled"/>
-					<button id="saveScheduleEnabled" class="btn btn-sm btn-outline-secondary ml-2">Save</button>
+					<button id="saveScheduleEnabled" class="btn btn-sm btn-outline-secondary ml-2">Save Enabled</button>
+				</div>
+				<div class="form-inline mb-2">
+					<label class="mr-2" for="startTime">Start (EST)</label>
+					<input type="time" id="startTime" class="form-control form-control-sm" required />
+				</div>
+				<div class="form-inline mb-2">
+					<label class="mr-2" for="stopTime">Stop (EST, optional)</label>
+					<input type="time" id="stopTime" class="form-control form-control-sm" />
+				</div>
+				<div class="form-inline mb-2">
+					<button id="saveSchedule" class="btn btn-sm btn-primary">Save Schedule</button>
 				</div>
 				<pre id="scheduleData" class="small">Loading...</pre>
 			</div>
@@ -137,6 +148,23 @@
 						if (typeof j.enabled === 'boolean') {
 							document.getElementById('scheduleEnabled').checked = j.enabled;
 						}
+						try {
+							var rules = Array.isArray(j.rules) ? j.rules : [];
+							var onRule = rules.find(function (r) { return r.action === 'on'; });
+							var offRule = rules.find(function (r) { return r.action === 'off'; });
+							if (onRule && onRule.time) {
+								var sh = String(onRule.time.hour).padStart(2, '0');
+								var sm = String(onRule.time.minute).padStart(2, '0');
+								document.getElementById('startTime').value = sh + ':' + sm;
+							}
+							if (offRule && offRule.time) {
+								var eh = String(offRule.time.hour).padStart(2, '0');
+								var em = String(offRule.time.minute).padStart(2, '0');
+								document.getElementById('stopTime').value = eh + ':' + em;
+							} else {
+								document.getElementById('stopTime').value = '';
+							}
+						} catch (_) { /* ignore */ }
 					})
 					.catch(function () {
 						document.getElementById('scheduleData').textContent = 'Failed to load schedule';
@@ -152,10 +180,46 @@
 					cache: 'no-store'
 				})
 					.then(function (r) { return r.json(); })
-					.then(function () {
+					.then(function () { loadSchedule(); })
+					.catch(function () { /* ignore */ });
+			}
+
+			function saveSchedule() {
+				var start = document.getElementById('startTime').value;
+				var stop = document.getElementById('stopTime').value;
+				var enabled = document.getElementById('scheduleEnabled').checked;
+
+				function isValidHHMM(s) {
+					if (!s || typeof s !== 'string') return false;
+					var m = s.match(/^([0-1]\d|2[0-3]):([0-5]\d)$/);
+					return !!m;
+				}
+				if (!isValidHHMM(start)) {
+					alert('Start time must be HH:MM (24h, EST).');
+					return;
+				}
+				if (stop && !isValidHHMM(stop)) {
+					alert('Stop time must be HH:MM (24h, EST) or leave empty.');
+					return;
+				}
+
+				fetch('/api/schedule', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ startHHMM: start, stopHHMM: stop || '', enabled: enabled }),
+					cache: 'no-store'
+				})
+					.then(function (r) { return r.json(); })
+					.then(function (j) {
+						if (!j.ok) {
+							alert('Failed to save: ' + (j.error || 'unknown error'));
+							return;
+						}
 						loadSchedule();
 					})
-					.catch(function () { /* ignore */ });
+					.catch(function () {
+						alert('Failed to save schedule');
+					});
 			}
 
 			// Optional Server-Sent Events hookup for near real-time updates
@@ -185,6 +249,8 @@
 				if (btn) btn.addEventListener('click', togglePower);
 				var saveBtn = document.getElementById('saveScheduleEnabled');
 				if (saveBtn) saveBtn.addEventListener('click', saveScheduleEnabled);
+				var saveScheduleBtn = document.getElementById('saveSchedule');
+				if (saveScheduleBtn) saveScheduleBtn.addEventListener('click', saveSchedule);
 
 				// initial loads
 				pollState();
