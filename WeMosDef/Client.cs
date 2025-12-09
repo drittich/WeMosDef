@@ -212,8 +212,14 @@ namespace WeMosDef
                 req.Content = new StringContent(soapXml, Encoding.UTF8, "text/xml");
                 var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
                 resp.EnsureSuccessStatusCode();
-                // .NET Framework HttpContent.ReadAsStringAsync() has no ct overload
-                var body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                // Verbose header logging disabled after diagnosis to reduce noise.
+                // If needed for future diagnostics, re-enable by dumping resp.Content.Headers here.
+
+                // Safely decode body regardless of invalid/quoted charset headers
+                // Read raw bytes and force UTF-8 decoding (Wemo devices respond UTF-8)
+                var bytes = await resp.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                var body = Encoding.UTF8.GetString(bytes);
                 return body;
             }
         }
