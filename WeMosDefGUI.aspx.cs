@@ -41,33 +41,11 @@ public partial class WeMosDefGUI : System.Web.UI.Page
 				client = new WeMosDef.Client(ip, port);
 				client.Off();
 				break;
-			case "clean":
-				DoClean(ip, port);
-				break;
 			case "powerstate":
 				PowerState = GetPowerState(ip, port);
 				break;
 			default:
 				break;
-		}
-	}
-
-	// a cleaning cycle for my espresso machine
-	void DoClean(string ip, int port)
-	{
-		TimeSpan onInterval = TimeSpan.FromSeconds(10);
-		TimeSpan offInterval = TimeSpan.FromSeconds(10);
-		int repetitions = 6;
-
-		var client = new WeMosDef.Client(ip, port);
-		for (int i = 0; i < repetitions; i++)
-		{
-			client.On();
-			System.Threading.Thread.Sleep(onInterval);
-			client.Off();
-			// don't sleep the last time
-			if (i < repetitions - 1)
-				System.Threading.Thread.Sleep(offInterval);
 		}
 	}
 	

@@ -31,9 +31,6 @@
 				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('off')">Off</button>
 			</div>
 			<div class="form-group">
-				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('clean')">Clean Cycle</button>
-			</div>
-			<div class="form-group">
 				<button type="button" class="btn btn-outline-primary wemo-button" onclick="handleButton('powerstate')">Power State</button>
 			</div>
 			<div class="form-group">
@@ -51,8 +48,6 @@
 				case 'on':
 					break;
 				case 'off':
-					break;
-				case 'clean':
 					break;
 				default:
 					break;
